@@ -30,7 +30,16 @@ func configureRails(sourceDir string) (*SourceInfo, error) {
 				Condition:   !checksPass(sourceDir, dirContains("Gemfile", "pg")),
 			},
 		},
-		ReleaseCmd: "bundle exec rails db:migrate",
+		RedisInitCommands: []InitCommand{
+			{
+				Command:     "bundle",
+				Args:        []string{"add", "redis"},
+				Description: "Adding the 'redis' gem for Redis support",
+				Condition:   !checksPass(sourceDir, dirContains("Gemfile", "^\\s*gem\\s+['\"]redis['\"]")),
+			},
+		},
+		RedisSecretVar: "REDIS_URL",
+		ReleaseCmd:     "bundle exec rails db:migrate",
 		Env: map[string]string{
 			"SERVER_COMMAND": "bundle exec puma",
 			"PORT":           "8080",

@@ -51,6 +51,8 @@ type SourceInfo struct {
 	InitCommands                 []InitCommand
 	PostgresInitCommands         []InitCommand
 	PostgresInitCommandCondition bool
+	RedisInitCommands            []InitCommand
+	RedisSecretVar               string
 }
 
 type SourceFile struct {

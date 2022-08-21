@@ -19,8 +19,10 @@ import (
 	"github.com/superfly/flyctl/cmdctx"
 	"github.com/superfly/flyctl/docstrings"
 	"github.com/superfly/flyctl/flyctl"
+	"github.com/superfly/flyctl/gql"
 	"github.com/superfly/flyctl/helpers"
 	"github.com/superfly/flyctl/internal/build/imgsrc"
+	"github.com/superfly/flyctl/internal/command/redis"
 	"github.com/superfly/flyctl/internal/filemu"
 	"github.com/superfly/flyctl/scanner"
 	"github.com/superfly/graphql"
@@ -461,6 +463,55 @@ func runLaunch(cmdCtx *cmdctx.CmdContext) error {
 			}
 		}
 
+	}
+
+	if !cmdCtx.Config.GetBool("no-deploy") && !cmdCtx.Config.GetBool("now") && srcInfo.RedisSecretVar != "" && confirm("Would you like to set up a Redis cluster now?") {
+
+		appID, err := cmdCtx.Client.API().GetAppID(ctx, cmdCtx.AppName)
+		if err != nil {
+			return err
+		}
+
+		// some or all of this logic belongs in internal/command/redis/redis.go ?
+
+		clusterAppName := cmdCtx.AppName + "-redis"
+		var client = cmdCtx.Client.API().GenqClient
+
+		result, err := gql.ListAddOnPlans(ctx, client)
+		if err != nil {
+			return err
+		}
+
+		// spinner?
+
+		// for now: first available plan, empty read regions, and no eviction
+		ctx := cmdCtx.Command.Context()
+		addOn, err := redis.ProvisionRedis(ctx, org, clusterAppName, result.AddOnPlans.Nodes[0].Id, region, &[]api.Region{}, false)
+
+		// Reset the app name here in case ProvisionRedis overrides it
+		cmdCtx.AppName = appID
+
+		if err != nil {
+			return err
+		}
+
+		secrets := make(map[string]string)
+		secrets[srcInfo.RedisSecretVar] = addOn.PublicUrl
+		_, err = cmdCtx.Client.API().SetSecrets(ctx, cmdCtx.AppName, secrets)
+		if err != nil {
+			return err
+		}
+
+		// Run any initialization commands required for redis support
+		if len(srcInfo.RedisInitCommands) > 0 {
+			for _, cmd := range srcInfo.RedisInitCommands {
+				if cmd.Condition {
+					if err := execInitCommand(ctx, cmd); err != nil {
+						return err
+					}
+				}
+			}
+		}
 	}
 
 	// Notices from a launcher about its behavior that should always be displayed
